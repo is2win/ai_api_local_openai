@@ -15,41 +15,41 @@ if not logger.handlers:
     logger.addHandler(fh)
 
 class GGUFModel:
-    def __init__(self, model_path: str):
-        # Инициализируем модель из файла в формате GGUF
-        self.model_path = model_path
-        self.model = self.load_model(model_path)
+    def __init__(self, model_id: str, gguf_file: str):
+        # Инициализируем модель из файла в формате GGUF с использованием Transformers Hugging Face
+        self.model_id = model_id
+        self.gguf_file = gguf_file
+        self.model = self.load_model(model_id, gguf_file)
+        self.tokenizer = self.load_tokenizer(model_id, gguf_file)
     
-    def load_model(self, path: str):
-        if not os.path.exists(path):
-            logger.error(f"Модель не найдена по пути: {path}")
-            raise FileNotFoundError(f"Модель не найдена по пути: {path}")
-
-        logger.info(f"Загрузка модели из: {path}")
-        # Импортируем библиотеку ctransformers
+    def load_model(self, model_id: str, gguf_file: str):
+        logger.info(f"Загрузка модели {model_id} с использованием gguf файла: {gguf_file}")
         try:
-            from ctransformers import AutoModelForCausalLM
-        except ImportError:
-            logger.exception("Пакет ctransformers не установлен")
-            raise ImportError("Пакет ctransformers не установлен. Установите его командой 'pip install ctransformers'.")
-
-        # Создаем экземпляр модели с заданным путём через ctransformers и загружаем модель на GPU
-        model = AutoModelForCausalLM(model=path, device="cuda")
-        logger.info("Модель успешно загружена на GPU")
+            from transformers import AutoModelForCausalLM
+            model = AutoModelForCausalLM.from_pretrained(model_id, gguf_file=gguf_file)
+        except Exception as e:
+            logger.exception(f"Ошибка загрузки модели: {str(e)}")
+            raise RuntimeError(f"Ошибка загрузки модели: {str(e)}")
+        logger.info("Модель успешно загружена с использованием Transformers и gguf")
         return model
 
-    def generate(self, prompt: str, temperature: float, max_tokens: int, context_window: int = 2048, repetition_penalty: float = 1.0, stop_tokens: list = None) -> str:
-        logger.debug(f"Начало генерации текста. Prompt: {prompt}")
-        logger.debug(f"Параметры генерации: max_tokens={max_tokens}, temperature={temperature}, context_window={context_window}, repetition_penalty={repetition_penalty}, stop_tokens={stop_tokens}")
+    def load_tokenizer(self, model_id: str, gguf_file: str):
+        logger.info(f"Загрузка токенизатора для модели {model_id} с использованием gguf файла: {gguf_file}")
         try:
-            generated_text = self.model(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                context_window=context_window,
-                repetition_penalty=repetition_penalty,
-                stop=stop_tokens
-            )
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(model_id, gguf_file=gguf_file)
+        except Exception as e:
+            logger.exception(f"Ошибка загрузки токенизатора: {str(e)}")
+            raise RuntimeError(f"Ошибка загрузки токенизатора: {str(e)}")
+        logger.info("Токенизатор успешно загружен")
+        return tokenizer
+
+    def generate(self, prompt: str, temperature: float = 1.0, max_tokens: int = 150, **kwargs) -> str:
+        logger.debug(f"Начало генерации текста. Prompt: {prompt}")
+        try:
+            inputs = self.tokenizer(prompt, return_tensors='pt')
+            outputs = self.model.generate(**inputs, max_new_tokens=max_tokens, temperature=temperature, **kwargs)
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             logger.debug(f"Генерация завершена. Результат: {generated_text}")
             return generated_text
         except Exception as e:

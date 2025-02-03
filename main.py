@@ -41,8 +41,9 @@ class ChatCompletionResponse(BaseModel):
     usage: dict
 
 # Загружаем модель при запуске сервера
-model_path = "path/to/your_model.gguf"  # Укажите путь к вашей модели в формате GGUF
-model_instance = GGUFModel(model_path)
+model_id = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF"  # Идентификатор модели на Hugging Face
+gguf_file = "path/to/your_model.gguf"  # Путь к вашему gguf файлу модели
+model_instance = GGUFModel(model_id, gguf_file)
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 def chat_completion(request: ChatCompletionRequest):

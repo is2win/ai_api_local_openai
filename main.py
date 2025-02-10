@@ -4,8 +4,12 @@ from typing import List, Optional
 import time
 import os
 import logging
+from dotenv import load_dotenv
 
-from model import GGUFModel  # Импортируем наш модуль для работы с моделью
+from model import GGUFModel
+
+# Загружаем переменные окружения
+load_dotenv()
 
 app = FastAPI()
 
@@ -41,21 +45,38 @@ class ChatCompletionResponse(BaseModel):
     usage: dict
 
 # Загружаем модель при запуске сервера
-model_id = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF"  # Идентификатор модели на Hugging Face
-gguf_file = "path/to/your_model.gguf"  # Путь к вашему gguf файлу модели
-model_instance = GGUFModel(model_id, gguf_file)
+MODEL_PATH = os.getenv("MODEL_PATH", "models/model.gguf")  # Путь к GGUF файлу
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "0"))  # Количество GPU слоев
+N_CTX = int(os.getenv("N_CTX", "2048"))  # Размер контекстного окна
+
+model_instance = GGUFModel(
+    model_path=MODEL_PATH,
+    n_gpu_layers=N_GPU_LAYERS,
+    n_ctx=N_CTX
+)
+
+def format_prompt(messages: List[Message]) -> str:
+    """Форматирование сообщений в промпт для модели"""
+    formatted_prompt = ""
+    for msg in messages:
+        if msg.role == "system":
+            formatted_prompt += f"System: {msg.content}\n"
+        elif msg.role == "user":
+            formatted_prompt += f"User: {msg.content}\n"
+        elif msg.role == "assistant":
+            formatted_prompt += f"Assistant: {msg.content}\n"
+    formatted_prompt += "Assistant: "
+    return formatted_prompt
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 def chat_completion(request: ChatCompletionRequest):
     logger.info("Получен запрос /v1/chat/completions")
     logger.debug(f"Данные запроса: {request.dict()}")
     
-    # Формируем prompt из переданных сообщений
-    prompt = ""
-    for msg in request.messages:
-        prompt += f"{msg.role.capitalize()}: {msg.content}\n"
+    # Форматируем промпт из сообщений
+    prompt = format_prompt(request.messages)
     
-    # Генерируем ответ с помощью локальной модели
+    # Генерируем ответ
     try:
         generated_text = model_instance.generate(
             prompt=prompt,
@@ -68,9 +89,9 @@ def chat_completion(request: ChatCompletionRequest):
         logger.error(f"Ошибка генерации: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     
-    # Формируем ответ API, аналогичный формату OpenAI (с ключом "message")
+    # Формируем ответ API
     response = ChatCompletionResponse(
-        id="chatcmpl-123456",
+        id=f"chatcmpl-{int(time.time())}",
         object="chat.completion",
         created=int(time.time()),
         choices=[{
